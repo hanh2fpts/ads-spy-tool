@@ -4,6 +4,14 @@ let sortCol = null;
 let sortAsc = true;
 let currentAdvertiserId = '';
 
+function esc(s) {
+  return String(s ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
 const input = document.getElementById('advertiserIdInput');
 const scrapeBtn = document.getElementById('scrapeBtn');
 const errorMsg = document.getElementById('errorMsg');
@@ -60,7 +68,7 @@ async function runScrape() {
     const data = await res.json();
     clearInterval(stepTimer);
 
-    if (!res.ok) { setError(data.error); return; }
+    if (!res.ok) { setError(data.error || 'Lỗi không xác định từ server.'); return; }
 
     currentCampaigns = data.campaigns;
     renderStats(currentCampaigns);
@@ -88,13 +96,13 @@ function renderCards(campaigns) {
   cardView.innerHTML = campaigns.map(c => `
     <div class="card">
       ${c.thumbnailUrl
-        ? `<img class="card-thumb" src="${c.thumbnailUrl}" alt="${c.name}" loading="lazy" />`
+        ? `<img class="card-thumb" src="${esc(c.thumbnailUrl)}" alt="${esc(c.name)}" loading="lazy" />`
         : `<div class="card-thumb-placeholder">Không có ảnh</div>`}
       <div class="card-body">
-        <div class="card-name">${c.name}</div>
+        <div class="card-name">${esc(c.name)}</div>
         <div class="card-meta">
-          📅 ${c.startDate || '?'} → ${c.endDate || 'nay'}<br/>
-          📺 ${c.formats.join(' · ') || '—'}
+          📅 ${esc(c.startDate || '?')} → ${esc(c.endDate || 'nay')}<br/>
+          📺 ${esc(c.formats.join(' · ') || '—')}
         </div>
         <span class="badge ${c.isActive ? 'active' : 'inactive'}">
           ${c.isActive ? '● Đang chạy' : '⏹ Đã tắt'}
@@ -115,10 +123,10 @@ function renderTable(campaigns) {
   }
   tableBody.innerHTML = sorted.map(c => `
     <tr>
-      <td>${c.name}</td>
-      <td>${c.startDate || '—'}</td>
-      <td>${c.endDate || '—'}</td>
-      <td>${c.formats.join(' · ') || '—'}</td>
+      <td>${esc(c.name)}</td>
+      <td>${esc(c.startDate || '—')}</td>
+      <td>${esc(c.endDate || '—')}</td>
+      <td>${esc(c.formats.join(' · ') || '—')}</td>
       <td><span class="badge ${c.isActive ? 'active' : 'inactive'}">${c.isActive ? 'Đang chạy' : 'Đã tắt'}</span></td>
     </tr>
   `).join('');
