@@ -1,0 +1,18 @@
+{
+  "creativeGroups": [
+    {
+      "advertiserName": "Dragon & Hero",
+      "firstShownDate": { "year": 2025, "month": 1, "day": 1 },
+      "lastShownDate": null,
+      "adTypes": ["DISPLAY", "SEARCH"],
+      "thumbnailUrl": "https://example.com/thumb1.jpg"
+    },
+    {
+      "advertiserName": "TriDom",
+      "firstShownDate": { "year": 2024, "month": 3, "day": 15 },
+      "lastShownDate": { "year": 2024, "month": 12, "day": 30 },
+      "adTypes": ["VIDEO"],
+      "thumbnailUrl": "https://example.com/thumb2.jpg"
+    }
+  ]
+}
