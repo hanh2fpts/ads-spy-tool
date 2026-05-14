@@ -1,18 +1,30 @@
 {
-  "creativeGroups": [
+  "1": [
     {
-      "advertiserName": "Dragon & Hero",
-      "firstShownDate": { "year": 2025, "month": 1, "day": 1 },
-      "lastShownDate": null,
-      "adTypes": ["DISPLAY", "SEARCH"],
-      "thumbnailUrl": "https://example.com/thumb1.jpg"
+      "1": "AR17544031317769846785",
+      "2": "CR09272607626380705793",
+      "3": {
+        "3": {"2": "<img src=\"https://tpc.googlesyndication.com/archive/simgad/15420343909184436974\" height=\"174\" width=\"486\">"},
+        "5": true
+      },
+      "4": 1,
+      "6": {"1": "1767681984", "2": 179492000},
+      "7": {"1": "1778754400", "2": 11622000},
+      "12": "Lê Vinh",
+      "13": 116
     },
     {
-      "advertiserName": "TriDom",
-      "firstShownDate": { "year": 2024, "month": 3, "day": 15 },
-      "lastShownDate": { "year": 2024, "month": 12, "day": 30 },
-      "adTypes": ["VIDEO"],
-      "thumbnailUrl": "https://example.com/thumb2.jpg"
+      "1": "AR17544031317769846785",
+      "2": "CR99999999999999999999",
+      "3": {
+        "3": {"2": "<img src=\"https://tpc.googlesyndication.com/archive/simgad/9999999999999999999\" height=\"200\" width=\"400\">"},
+        "5": false
+      },
+      "4": 3,
+      "6": {"1": "1735689600", "2": 0},
+      "7": {"1": "1751328000", "2": 0},
+      "12": "Lê Vinh",
+      "13": 5
     }
   ]
 }

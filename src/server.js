@@ -1,8 +1,8 @@
 // src/server.js
 const express = require('express');
 const path = require('path');
-const { scrape } = require('./scraper');
-const { parse } = require('./parser');
+const { scrape, scrapeCreativeDetail } = require('./scraper');
+const { parse, parseCreativeDetail } = require('./parser');
 const cache = require('./cache');
 
 const app = express();
@@ -38,6 +38,29 @@ app.post('/api/scrape', async (req, res) => {
   } catch (err) {
     const msg = ERROR_MESSAGES[err.message] || ERROR_MESSAGES.DEFAULT;
     return res.status(502).json({ error: msg });
+  }
+});
+
+app.get('/api/creative-detail', async (req, res) => {
+  const { advertiserId, creativeId } = req.query;
+  if (!advertiserId || !ID_REGEX.test(advertiserId)) {
+    return res.status(400).json({ error: 'Advertiser ID không hợp lệ.' });
+  }
+  if (!creativeId || !/^CR\d+$/.test(creativeId)) {
+    return res.status(400).json({ error: 'Creative ID không hợp lệ.' });
+  }
+
+  const cacheKey = `${advertiserId}:${creativeId}`;
+  const cached = cache.get(cacheKey);
+  if (cached) return res.json(cached);
+
+  try {
+    const raw = await scrapeCreativeDetail(advertiserId, creativeId);
+    const detail = parseCreativeDetail(raw);
+    cache.set(cacheKey, detail);
+    return res.json(detail);
+  } catch (err) {
+    return res.status(502).json({ error: 'Không thể tải chi tiết quảng cáo. Vui lòng thử lại.' });
   }
 });
 

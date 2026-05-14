@@ -1,25 +1,97 @@
-// src/parser.js
+// Format codes observed in SearchCreatives protobuf response
 const FORMAT_MAP = {
-  DISPLAY: 'Display',
-  SEARCH: 'Search',
-  VIDEO: 'YouTube',
-  SHOPPING: 'Shopping',
+  1: 'Display',
+  2: 'Search',
+  3: 'YouTube',
+  4: 'Shopping',
 };
 
-function formatDate({ year, month, day }) {
-  return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+function timestampToDate(ts) {
+  if (!ts) return null;
+  const seconds = parseInt(ts["1"], 10);
+  if (isNaN(seconds)) return null;
+  const d = new Date(seconds * 1000);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+function extractThumbnailUrl(content) {
+  if (!content) return null;
+  const html = content?.["3"]?.["2"] || '';
+  return html.match(/src="([^"]+)"/)?.[1] || null;
 }
 
 function parse(raw) {
-  const groups = raw?.creativeGroups || [];
-  return groups.map((g) => ({
-    name: g.advertiserName || 'Unknown',
-    startDate: g.firstShownDate ? formatDate(g.firstShownDate) : null,
-    endDate: g.lastShownDate ? formatDate(g.lastShownDate) : null,
-    isActive: g.lastShownDate == null,
-    formats: (g.adTypes || []).map((t) => FORMAT_MAP[t] || t),
-    thumbnailUrl: g.thumbnailUrl || null,
+  const creatives = raw?.["1"];
+  if (!Array.isArray(creatives)) return [];
+
+  return creatives.map((c) => ({
+    name: c["12"] || 'Unknown',
+    creativeId: c["2"] || null,
+    startDate: timestampToDate(c["6"]),
+    endDate: timestampToDate(c["7"]),
+    isActive: c["3"]?.["5"] === true,
+    formats: [FORMAT_MAP[c["4"]] || `format_${c["4"]}`].filter(Boolean),
+    thumbnailUrl: extractThumbnailUrl(c["3"]),
   }));
 }
 
-module.exports = { parse };
+function parseCreativeDetail(raw) {
+  const creative = raw?.["1"] || {};
+  const variants = creative["5"] || [];
+
+  const images = [];
+  const previewUrls = [];
+  const headlines = [];
+  const descriptions = [];
+  const keywords = [];
+
+  for (const v of variants) {
+    // Display image variant: {"3": {"2": "<img html>"}, "5": active}
+    if (v["3"]?.["2"]) {
+      const html = v["3"]["2"];
+      const src = html.match(/src="([^"]+)"/)?.[1];
+      const width = html.match(/width="(\d+)"/)?.[1];
+      const height = html.match(/height="(\d+)"/)?.[1];
+      if (src && !images.some(i => i.url === src)) {
+        images.push({ url: src, width: width ? +width : null, height: height ? +height : null });
+      }
+    }
+
+    // Preview URL variant: {"1": {"4": url}}
+    if (v["1"]?.["4"] && !previewUrls.includes(v["1"]["4"])) {
+      previewUrls.push(v["1"]["4"]);
+    }
+
+    // Search/RSA text content — field "2" contains text data
+    // Structure for search ads (confirmed when tested with search ads advertiser)
+    if (v["2"]) {
+      const txt = v["2"];
+      // Headlines may be in repeated string fields "1"
+      const h = txt["1"];
+      if (typeof h === 'string') headlines.push(h);
+      else if (Array.isArray(h)) headlines.push(...h);
+      // Descriptions may be in "2"
+      const d = txt["2"];
+      if (typeof d === 'string') descriptions.push(d);
+      else if (Array.isArray(d)) descriptions.push(...d);
+    }
+
+    // Video variant: {"1": {"1": youtube_url}} or similar
+    if (v["1"]?.["1"] && typeof v["1"]["1"] === 'string' && v["1"]["1"].includes('youtube')) {
+      keywords.push({ type: 'video_url', value: v["1"]["1"] });
+    }
+  }
+
+  return {
+    advertiserId: creative["1"],
+    creativeId: creative["2"],
+    lastShownDate: timestampToDate(creative["4"]),
+    headlines,
+    descriptions,
+    keywords,
+    images,
+    previewUrls,
+  };
+}
+
+module.exports = { parse, parseCreativeDetail };

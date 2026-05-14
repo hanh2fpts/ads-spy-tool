@@ -12,6 +12,7 @@ test('mỗi campaign có đủ fields', () => {
   const result = parser.parse(sampleResponse);
   const first = result[0];
   expect(first).toHaveProperty('name');
+  expect(first).toHaveProperty('creativeId');
   expect(first).toHaveProperty('startDate');
   expect(first).toHaveProperty('endDate');
   expect(first).toHaveProperty('isActive');
@@ -19,29 +20,32 @@ test('mỗi campaign có đủ fields', () => {
   expect(first).toHaveProperty('thumbnailUrl');
 });
 
-test('campaign đang chạy có isActive=true và endDate=null', () => {
+test('campaign đang chạy có isActive=true', () => {
   const result = parser.parse(sampleResponse);
-  const active = result.find(c => c.name === 'Dragon & Hero');
+  const active = result[0];
   expect(active.isActive).toBe(true);
-  expect(active.endDate).toBeNull();
-  expect(active.startDate).toBe('2025-01-01');
+  expect(active.startDate).toBe('2026-01-05');
 });
 
-test('campaign đã tắt có isActive=false và endDate đúng', () => {
+test('campaign đã tắt có isActive=false', () => {
   const result = parser.parse(sampleResponse);
-  const inactive = result.find(c => c.name === 'TriDom');
+  const inactive = result[1];
   expect(inactive.isActive).toBe(false);
-  expect(inactive.endDate).toBe('2024-12-30');
+  expect(inactive.endDate).toBe('2025-06-30');
 });
 
 test('formats được map đúng', () => {
   const result = parser.parse(sampleResponse);
-  const first = result[0];
-  expect(first.formats).toContain('Display');
-  expect(first.formats).toContain('Search');
+  expect(result[0].formats).toContain('Display');
+  expect(result[1].formats).toContain('YouTube');
+});
+
+test('thumbnail URL được trích xuất từ img tag', () => {
+  const result = parser.parse(sampleResponse);
+  expect(result[0].thumbnailUrl).toContain('tpc.googlesyndication.com');
 });
 
 test('parse trả mảng rỗng nếu không có data', () => {
   expect(parser.parse({})).toEqual([]);
-  expect(parser.parse({ creativeGroups: [] })).toEqual([]);
+  expect(parser.parse({ "1": [] })).toEqual([]);
 });
