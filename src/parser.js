@@ -16,7 +16,7 @@ function parse(raw) {
     name: g.advertiserName || 'Unknown',
     startDate: g.firstShownDate ? formatDate(g.firstShownDate) : null,
     endDate: g.lastShownDate ? formatDate(g.lastShownDate) : null,
-    isActive: !g.lastShownDate,
+    isActive: g.lastShownDate == null,
     formats: (g.adTypes || []).map((t) => FORMAT_MAP[t] || t),
     thumbnailUrl: g.thumbnailUrl || null,
   }));
