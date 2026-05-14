@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Google Ads Spy Tool</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>🔍 Google Ads Spy Tool</h1>
+    </header>
+
+    <div class="input-bar">
+      <input id="advertiserIdInput" type="text" placeholder="Dán Advertiser ID vào đây... (vd: AR12345678)" />
+      <button id="scrapeBtn">▶ Scrape</button>
+    </div>
+
+    <div id="errorMsg" class="error-msg hidden"></div>
+
+    <div id="statsBar" class="stats-bar hidden">
+      <span id="statTotal" class="stat total"></span>
+      <span id="statActive" class="stat active"></span>
+      <span id="statInactive" class="stat inactive"></span>
+      <div class="view-controls">
+        <button id="cardViewBtn" class="active">🗂 Card</button>
+        <button id="tableViewBtn">☰ Table</button>
+        <button id="exportBtn">⬇ CSV</button>
+      </div>
+    </div>
+
+    <div id="loadingState" class="loading hidden">
+      <div class="spinner"></div>
+      <div id="loadingStep">Đang khởi động...</div>
+    </div>
+
+    <div id="cardView" class="card-grid hidden"></div>
+
+    <div id="tableView" class="hidden">
+      <table>
+        <thead>
+          <tr>
+            <th>Dự án</th>
+            <th data-col="startDate">Bắt đầu ↕</th>
+            <th data-col="endDate">Kết thúc ↕</th>
+            <th>Format</th>
+            <th data-col="isActive">Trạng thái ↕</th>
+          </tr>
+        </thead>
+        <tbody id="tableBody"></tbody>
+      </table>
+    </div>
+  </div>
+  <script src="app.js"></script>
+</body>
+</html>
