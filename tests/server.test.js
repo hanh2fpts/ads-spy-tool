@@ -54,3 +54,28 @@ test('GET /api/export trả CSV', async () => {
   expect(res.headers['content-type']).toMatch(/text\/csv/);
   expect(res.text).toContain('TestGame');
 });
+
+test('POST /api/scrape trả từ cache nếu có', async () => {
+  const cache = require('../src/cache');
+  cache.get.mockReturnValueOnce([
+    { name: 'CachedGame', startDate: '2025-01-01', endDate: null, isActive: true, formats: ['Display'], thumbnailUrl: null }
+  ]);
+  const res = await request(app)
+    .post('/api/scrape')
+    .send({ advertiserId: 'AR123456' });
+  expect(res.status).toBe(200);
+  expect(res.body.fromCache).toBe(true);
+  expect(res.body.campaigns[0].name).toBe('CachedGame');
+});
+
+test('POST /api/scrape trả 502 khi scraper throw lỗi', async () => {
+  const cache = require('../src/cache');
+  cache.get.mockReturnValueOnce(null);
+  const { scrape } = require('../src/scraper');
+  scrape.mockRejectedValueOnce(new Error('NO_DATA'));
+  const res = await request(app)
+    .post('/api/scrape')
+    .send({ advertiserId: 'AR123456' });
+  expect(res.status).toBe(502);
+  expect(res.body.error).toContain('Không tìm thấy');
+});

@@ -53,9 +53,10 @@ app.get('/api/export', (req, res) => {
   }
 
   const header = 'Name,Start Date,End Date,Is Active,Formats\n';
-  const rows = campaigns.map(c =>
-    `"${c.name}",${c.startDate || ''},${c.endDate || ''},${c.isActive},${c.formats.join('|')}`
-  ).join('\n');
+  const rows = campaigns.map(c => {
+    const safeName = c.name.replace(/"/g, '""');
+    return `"${safeName}",${c.startDate || ''},${c.endDate || ''},${c.isActive},${c.formats.join('|')}`;
+  }).join('\n');
 
   res.setHeader('Content-Type', 'text/csv');
   res.setHeader('Content-Disposition', `attachment; filename="${advertiserId}.csv"`);
