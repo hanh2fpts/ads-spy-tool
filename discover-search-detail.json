@@ -1,0 +1,1 @@
+{"2":"com.google.apps.framework.request.BadRequestException: com.google.apps.framework.parameters.PostBodyException: No POST body converter from application/json+protobuf to com.google.ads.integrity.transparency.reporting.GetCreativeByIdRequest","5":400,"9":3}

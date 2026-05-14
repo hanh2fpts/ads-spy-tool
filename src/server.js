@@ -3,6 +3,7 @@ const express = require('express');
 const path = require('path');
 const { scrape, scrapeCreativeDetail } = require('./scraper');
 const { parse, parseCreativeDetail } = require('./parser');
+const { extractText, parseAdText } = require('./ocr');
 const cache = require('./cache');
 
 const app = express();
@@ -57,6 +58,21 @@ app.get('/api/creative-detail', async (req, res) => {
   try {
     const raw = await scrapeCreativeDetail(advertiserId, creativeId);
     const detail = parseCreativeDetail(raw);
+
+    // Run OCR on the largest image to extract text content (headlines, descriptions)
+    if (detail.images && detail.images.length > 0) {
+      const largest = detail.images.reduce((a, b) =>
+        (b.width || 0) * (b.height || 0) > (a.width || 0) * (a.height || 0) ? b : a
+      );
+      const ocrRaw = await extractText(largest.url);
+      if (ocrRaw) {
+        const { headlines, descriptions } = parseAdText(ocrRaw);
+        if (detail.headlines.length === 0) detail.headlines = headlines;
+        if (detail.descriptions.length === 0) detail.descriptions = descriptions;
+        detail.ocrText = ocrRaw;
+      }
+    }
+
     cache.set(cacheKey, detail);
     return res.json(detail);
   } catch (err) {

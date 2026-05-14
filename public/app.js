@@ -214,10 +214,9 @@ function renderCreativeDetail(d) {
     sections.push(`<div class="detail-section"><h3>Mô tả</h3><div class="detail-text-list">${items}</div></div>`);
   }
 
-  // Keywords (video URL or other metadata)
-  if (d.keywords && d.keywords.length > 0) {
-    const items = d.keywords.map(k => `<div class="detail-text-item">${esc(k.type)}: ${esc(k.value)}</div>`).join('');
-    sections.push(`<div class="detail-section"><h3>Từ khoá / Metadata</h3><div class="detail-text-list">${items}</div></div>`);
+  // Raw OCR text fallback (when structured parse produced no results)
+  if (d.ocrText && d.headlines.length === 0 && d.descriptions.length === 0) {
+    sections.push(`<div class="detail-section"><h3>Nội dung nhận dạng (OCR)</h3><div class="detail-text-item" style="white-space:pre-wrap">${esc(d.ocrText)}</div></div>`);
   }
 
   // Preview link
