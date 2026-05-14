@@ -133,7 +133,7 @@ function showView(view) {
 
 function doExport() {
   if (!currentAdvertiserId) return;
-  window.location.href = `/api/export?advertiserId=${currentAdvertiserId}`;
+  window.location.href = `/api/export?advertiserId=${encodeURIComponent(currentAdvertiserId)}`;
 }
 
 function setError(msg) {
