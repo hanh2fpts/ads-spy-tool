@@ -23,7 +23,9 @@ const ADVERTISER_ID = process.argv[2] || 'AR12345678'; // thay bằng ID thật
           console.log('Preview:', text.slice(0, 300));
           console.log('================');
         }
-      } catch (_) {}
+      } catch (_) {
+        // body unavailable (redirect, binary content, or navigation abort) — skip silently
+      }
     }
   });
 
@@ -33,4 +35,7 @@ const ADVERTISER_ID = process.argv[2] || 'AR12345678'; // thay bằng ID thật
   await page.waitForTimeout(5000);
 
   await browser.close();
-})();
+})().catch(err => {
+  console.error('Discovery failed:', err.message);
+  process.exit(1);
+});
