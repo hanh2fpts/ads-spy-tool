@@ -1,0 +1,16 @@
+{
+  "name": "ads-spy-tool",
+  "version": "1.0.0",
+  "scripts": {
+    "start": "node src/server.js",
+    "test": "jest",
+    "discover": "node discover.js"
+  },
+  "dependencies": {
+    "express": "^4.22.2",
+    "playwright": "^1.60.0"
+  },
+  "devDependencies": {
+    "jest": "^29.7.0"
+  }
+}
