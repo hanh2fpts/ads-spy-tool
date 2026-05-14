@@ -1,6 +1,6 @@
 # 🔍 Google Ads Spy Tool
 
-Công cụ tự động theo dõi chiến dịch quảng cáo của đối thủ trên [Google Ads Transparency Center](https://adstransparency.google.com). Thay vì mất hàng chục phút lướt tay, chỉ cần dán Advertiser ID vào — tool sẽ cho bạn ngay danh sách toàn bộ dự án họ đang chạy.
+Công cụ tự động theo dõi chiến dịch quảng cáo của đối thủ trên [Google Ads Transparency Center](https://adstransparency.google.com). Thay vì mất hàng chục phút lướt tay, chỉ cần dán Advertiser ID vào — tool sẽ cho bạn ngay danh sách toàn bộ dự án họ đang chạy, bao gồm mẫu quảng cáo và nội dung nhận dạng tự động.
 
 ---
 
@@ -39,7 +39,7 @@ cd Desktop/MMO/ads-spy-tool
 npm install
 ```
 
-Lệnh này sẽ tải thêm các thư viện cần thiết. Chờ khoảng 1-2 phút cho đến khi hiện dấu nhắc `$` hoặc `>` trở lại.
+Lệnh này sẽ tải thêm các thư viện cần thiết (bao gồm Tesseract OCR). Chờ khoảng 1-2 phút cho đến khi hiện dấu nhắc `$` hoặc `>` trở lại.
 
 ### Bước 4 — Cài trình duyệt tự động
 
@@ -114,8 +114,8 @@ Giao diện tool sẽ hiện ra.
 
 - Dán Advertiser ID vào ô nhập (ví dụ: `AR1234567890`)
 - Nhấn nút **▶ Scrape** hoặc nhấn **Enter**
-- Chờ khoảng **10-30 giây** (tool đang mở Chrome ảo và lấy dữ liệu)
-- Kết quả hiện ra tự động
+- Chờ khoảng **5-15 giây** (tool đang mở Chrome ảo và lấy dữ liệu)
+- Kết quả hiện ra tự động, hiển thị tất cả quảng cáo từ mọi khu vực trên thế giới
 
 ### 2. Xem dạng Card (mặc định)
 
@@ -123,10 +123,20 @@ Mỗi dự án hiện thành 1 thẻ gồm:
 - **Hình ảnh** thumbnail của quảng cáo
 - **Tên dự án** (app/game/website)
 - **Thời gian chạy** (ngày bắt đầu → ngày kết thúc)
-- **Format quảng cáo** (Display, Search, YouTube...)
+- **Format quảng cáo** (Display, Search, YouTube, Shopping)
 - **Trạng thái:** `● Đang chạy` (xanh) hoặc `⏹ Đã tắt` (đỏ)
+- Nút **🔍 Xem mẫu quảng cáo** để xem chi tiết
 
-### 3. Xem dạng Bảng (Table)
+### 3. Xem mẫu quảng cáo
+
+Nhấn nút **🔍 Xem mẫu quảng cáo** trên bất kỳ card nào để mở popup chi tiết, gồm:
+- **Ảnh quảng cáo** các kích thước khác nhau
+- **Tiêu đề** và **Mô tả** (tự động nhận dạng từ ảnh bằng OCR)
+- **Link xem trực tiếp** mẫu quảng cáo được render
+
+> Lần đầu xem mẫu chờ ~5 giây (khởi động engine OCR). Các lần sau nhanh hơn và kết quả được cache 1 giờ.
+
+### 4. Xem dạng Bảng (Table)
 
 Nhấn nút **☰ Table** để chuyển sang bảng. Có thể click vào tiêu đề cột để **sắp xếp** theo:
 - Ngày bắt đầu
@@ -135,7 +145,7 @@ Nhấn nút **☰ Table** để chuyển sang bảng. Có thể click vào tiêu
 
 Nhấn **🗂 Card** để quay lại dạng thẻ.
 
-### 4. Xuất CSV
+### 5. Xuất CSV
 
 Nhấn **⬇ CSV** để tải file Excel-compatible về máy. File chứa toàn bộ dữ liệu dự án của nhà quảng cáo đó.
 
@@ -146,10 +156,11 @@ Nhấn **⬇ CSV** để tải file Excel-compatible về máy. File chứa toà
 | Thông báo lỗi | Nguyên nhân | Cách xử lý |
 |---|---|---|
 | "Advertiser ID không hợp lệ" | ID sai format | ID phải bắt đầu bằng `AR` và chỉ có số |
-| "Không tìm thấy dữ liệu cho ID này" | ID không tồn tại hoặc trang trống | Kiểm tra lại ID có đúng không |
+| "Không tìm thấy dữ liệu cho ID này" | Advertiser không có quảng cáo nào | Thử advertiser khác; một số tài khoản không có quảng cáo public |
 | "Hết thời gian chờ, vui lòng thử lại" | Mạng chậm hoặc Google phản hồi chậm | Thử lại sau vài giây |
 | "Google tạm thời chặn, chờ vài phút rồi thử lại" | Đã scrape quá nhiều liên tiếp | Đợi 2-5 phút rồi thử lại |
 | "Không thể kết nối server" | Terminal bị tắt | Mở lại Terminal và chạy `npm start` |
+| "Không thể tải chi tiết quảng cáo" | Lỗi khi mở popup mẫu | Thử lại; nếu vẫn lỗi thì creative này không có data |
 
 ---
 
@@ -158,7 +169,7 @@ Nhấn **⬇ CSV** để tải file Excel-compatible về máy. File chứa toà
 - **Cache tự động 1 giờ:** Nếu bạn scrape cùng 1 ID trong vòng 1 giờ, kết quả sẽ hiện ngay lập tức (không cần đợi).
 - **Dự án "đang ngon":** Tập trung vào các dự án có badge `● Đang chạy` và ngày bắt đầu gần đây — đó là những campaign đang được đẩy mạnh.
 - **Export CSV rồi mở Excel:** Filter theo cột "Is Active = TRUE" để chỉ xem dự án đang chạy. Sort theo "Start Date" giảm dần để thấy dự án mới nhất lên đầu.
-- **Không cần internet liên tục:** Sau khi scrape xong, bạn có thể tắt mạng và vẫn xem được dữ liệu đã cache.
+- **OCR cho Search Ads:** Nội dung nhận dạng từ ảnh Search ad không phải lúc nào cũng hoàn hảo — dùng như tham khảo, kết hợp với ảnh preview để đọc chính xác hơn.
 
 ---
 
@@ -176,6 +187,5 @@ Nếu tool báo "Không tìm thấy dữ liệu" dù ID đúng (xảy ra khi Goo
    ```
    node discover.js AR_ID_THẬT_CỦA_BẠN
    ```
-2. Quan sát output — tìm dòng `=== RESPONSE ===` có chứa data campaign
-3. Copy URL pattern từ đó
-4. Mở `src/scraper.js`, tìm dòng `API_URL_PATTERN` và cập nhật regex theo URL mới
+2. Tìm dòng `[SearchCreatives captured]` trong output — đó là endpoint đang hoạt động
+3. Nếu endpoint thay đổi, mở `src/scraper.js`, cập nhật `API_URL_PATTERN` theo tên endpoint mới
