@@ -2,17 +2,30 @@
 const request = require('supertest');
 const app = require('../src/server');
 
+// Mock ocr to avoid tesseract.js dependency
+jest.mock('../src/ocr', () => ({
+  extractText: jest.fn().mockResolvedValue(null),
+  parseAdText: jest.fn().mockReturnValue({ headlines: [], descriptions: [] }),
+}));
+
 // Mock scraper và cache để không cần browser thật
 jest.mock('../src/scraper', () => ({
-  scrape: jest.fn().mockResolvedValue({ creativeGroups: [
-    {
-      advertiserName: 'TestGame',
-      firstShownDate: { year: 2025, month: 1, day: 1 },
-      lastShownDate: null,
-      adTypes: ['DISPLAY'],
-      thumbnailUrl: 'https://example.com/thumb.jpg',
-    }
-  ]})
+  scrape: jest.fn().mockResolvedValue({
+    "1": [
+      {
+        "1": "AR123456",
+        "2": "CR111",
+        "3": { "3": { "2": "<img src=\"https://example.com/t.jpg\">" }, "5": true },
+        "4": 1,
+        "6": { "1": "1735689600" },
+        "7": { "1": "1767225600" },
+        "12": "TestGame",
+        "13": 5
+      }
+    ]
+  }),
+  scrapeCreativeDetail: jest.fn(),
+  batchFetchFinalUrls: jest.fn().mockResolvedValue(new Map()),
 }));
 
 jest.mock('../src/cache', () => ({
