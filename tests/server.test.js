@@ -58,20 +58,21 @@ test('POST /api/scrape trả 400 nếu ID sai format', async () => {
 test('GET /api/export trả CSV', async () => {
   const cache = require('../src/cache');
   cache.get.mockReturnValue([
-    { name: 'TestGame', startDate: '2025-01-01', endDate: null, isActive: true, formats: ['Display'], thumbnailUrl: null }
+    { name: 'TestGame', homepageUrl: null, startDate: '2025-01-01', endDate: null, isActive: true, formats: ['Display'], thumbnailUrl: null }
   ]);
   const res = await request(app)
     .get('/api/export')
     .query({ advertiserId: 'AR123456' });
   expect(res.status).toBe(200);
   expect(res.headers['content-type']).toMatch(/text\/csv/);
+  expect(res.text).toContain('Homepage URL');
   expect(res.text).toContain('TestGame');
 });
 
 test('POST /api/scrape trả từ cache nếu có', async () => {
   const cache = require('../src/cache');
   cache.get.mockReturnValueOnce([
-    { name: 'CachedGame', startDate: '2025-01-01', endDate: null, isActive: true, formats: ['Display'], thumbnailUrl: null }
+    { name: 'CachedGame', homepageUrl: null, startDate: '2025-01-01', endDate: null, isActive: true, formats: ['Display'], thumbnailUrl: null }
   ]);
   const res = await request(app)
     .post('/api/scrape')

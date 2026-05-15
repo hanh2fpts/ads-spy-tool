@@ -1,7 +1,7 @@
 // src/server.js
 const express = require('express');
 const path = require('path');
-const { scrape, scrapeCreativeDetail } = require('./scraper');
+const { scrape, scrapeCreativeDetail, batchFetchFinalUrls } = require('./scraper');
 const { parse, parseCreativeDetail } = require('./parser');
 const { extractText, parseAdText } = require('./ocr');
 const cache = require('./cache');
@@ -33,7 +33,9 @@ app.post('/api/scrape', async (req, res) => {
 
   try {
     const raw = await scrape(advertiserId);
-    const campaigns = parse(raw);
+    const rawCreatives = raw?.["1"] || [];
+    const enrichments = await batchFetchFinalUrls(advertiserId, rawCreatives);
+    const campaigns = parse(raw, enrichments);
     cache.set(advertiserId, campaigns);
     return res.json({ campaigns, fromCache: false });
   } catch (err) {
@@ -91,10 +93,11 @@ app.get('/api/export', (req, res) => {
     return res.status(404).json({ error: 'Không có dữ liệu. Hãy scrape trước.' });
   }
 
-  const header = 'Name,Start Date,End Date,Is Active,Formats\n';
+  const header = 'Name,Homepage URL,Start Date,End Date,Is Active,Formats\n';
   const rows = campaigns.map(c => {
     const safeName = c.name.replace(/"/g, '""');
-    return `"${safeName}",${c.startDate || ''},${c.endDate || ''},${c.isActive},${c.formats.join('|')}`;
+    const safeUrl = (c.homepageUrl || '').replace(/"/g, '""');
+    return `"${safeName}","${safeUrl}",${c.startDate || ''},${c.endDate || ''},${c.isActive},${c.formats.join('|')}`;
   }).join('\n');
 
   res.setHeader('Content-Type', 'text/csv');
