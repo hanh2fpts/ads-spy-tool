@@ -105,12 +105,12 @@ async function fetchCreativeDetailWithBrowser(advertiserId, creativeId) {
     });
 
     const url = `https://adstransparency.google.com/advertiser/${advertiserId}/creative/${creativeId}?region=anywhere`;
-    await Promise.all([
+    const [, rawData] = await Promise.all([
       page.goto(url, { waitUntil: 'domcontentloaded', timeout: TIMEOUT_MS }),
       dataPromise,
     ]);
 
-    return await dataPromise;
+    return rawData;
   } finally {
     await browser.close();
   }
