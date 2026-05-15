@@ -105,6 +105,9 @@ function renderCards(campaigns) {
         : `<div class="card-thumb-placeholder">Không có ảnh</div>`}
       <div class="card-body">
         <div class="card-name">${esc(c.name)}</div>
+        ${c.homepageUrl
+          ? `<div class="card-url"><a href="${esc(c.homepageUrl)}" target="_blank" rel="noopener noreferrer">🔗 ${esc(c.homepageUrl)}</a></div>`
+          : ''}
         <div class="card-meta">
           📅 ${esc(c.startDate || '?')} → ${esc(c.endDate || 'nay')}<br/>
           📺 ${esc(c.formats.join(' · ') || '—')}
@@ -134,6 +137,9 @@ function renderTable(campaigns) {
   tableBody.innerHTML = sorted.map(c => `
     <tr>
       <td>${esc(c.name)}</td>
+      <td>${c.homepageUrl
+        ? `<a href="${esc(c.homepageUrl)}" target="_blank" rel="noopener noreferrer">${esc(c.homepageUrl)}</a>`
+        : '—'}</td>
       <td>${esc(c.startDate || '—')}</td>
       <td>${esc(c.endDate || '—')}</td>
       <td>${esc(c.formats.join(' · ') || '—')}</td>
