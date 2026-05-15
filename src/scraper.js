@@ -132,30 +132,34 @@ async function batchFetchFinalUrls(advertiserId, rawCreatives) {
       try {
         const controller = new AbortController();
         const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
-        const body = new URLSearchParams({
-          'f.req': JSON.stringify({ "1": advertiserId, "2": creativeId }),
-        }).toString();
-        const res = await fetch(
-          'https://adstransparency.google.com/anji/_/rpc/LookupService/GetCreativeById?authuser=',
-          {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/x-www-form-urlencoded',
-              'X-Same-Domain': '1',
-              'Origin': 'https://adstransparency.google.com',
-              'Referer': `https://adstransparency.google.com/advertiser/${advertiserId}/creative/${creativeId}?region=anywhere`,
-              'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
-            },
-            body,
-            signal: controller.signal,
-          }
-        );
-        clearTimeout(timer);
-        if (!res.ok) { results.set(creativeId, null); return; }
-        const json = await res.json();
-        const detail = parseCreativeDetail(json);
-        results.set(creativeId, detail.homepageUrl || null);
-      } catch (_) {
+        try {
+          const body = new URLSearchParams({
+            'f.req': JSON.stringify({ "1": advertiserId, "2": creativeId }),
+          }).toString();
+          const res = await fetch(
+            'https://adstransparency.google.com/anji/_/rpc/LookupService/GetCreativeById?authuser=',
+            {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/x-www-form-urlencoded',
+                'X-Same-Domain': '1',
+                'Origin': 'https://adstransparency.google.com',
+                'Referer': `https://adstransparency.google.com/advertiser/${advertiserId}/creative/${creativeId}?region=anywhere`,
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+              },
+              body,
+              signal: controller.signal,
+            }
+          );
+          if (!res.ok) { results.set(creativeId, null); return; }
+          const json = await res.json();
+          const detail = parseCreativeDetail(json);
+          results.set(creativeId, detail.homepageUrl || null);
+        } finally {
+          clearTimeout(timer);
+        }
+      } catch (err) {
+        console.warn(`[batchFetchFinalUrls] Failed for ${creativeId}:`, err.message);
         results.set(creativeId, null);
       }
     }));
