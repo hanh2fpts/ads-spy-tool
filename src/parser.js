@@ -6,6 +6,10 @@ const FORMAT_MAP = {
   4: 'Shopping',
 };
 
+function extractDomain(url) {
+  try { return new URL(url).hostname; } catch (_) { return null; }
+}
+
 function timestampToDate(ts) {
   if (!ts) return null;
   const seconds = parseInt(ts["1"], 10);
@@ -20,19 +24,25 @@ function extractThumbnailUrl(content) {
   return html.match(/src="([^"]+)"/)?.[1] || null;
 }
 
-function parse(raw) {
+function parse(raw, enrichments = new Map()) {
   const creatives = raw?.["1"];
   if (!Array.isArray(creatives)) return [];
 
-  return creatives.map((c) => ({
-    name: c["12"] || 'Unknown',
-    creativeId: c["2"] || null,
-    startDate: timestampToDate(c["6"]),
-    endDate: timestampToDate(c["7"]),
-    isActive: c["3"]?.["5"] === true,
-    formats: [FORMAT_MAP[c["4"]] || `format_${c["4"]}`].filter(Boolean),
-    thumbnailUrl: extractThumbnailUrl(c["3"]),
-  }));
+  return creatives.map((c) => {
+    const creativeId = c["2"] || null;
+    const homepageUrl = (creativeId && enrichments.get(creativeId)) || null;
+    const domain = homepageUrl ? extractDomain(homepageUrl) : null;
+    return {
+      name: domain || c["12"] || 'Unknown',
+      creativeId,
+      startDate: timestampToDate(c["6"]),
+      endDate: timestampToDate(c["7"]),
+      isActive: c["3"]?.["5"] === true,
+      formats: [FORMAT_MAP[c["4"]] || `format_${c["4"]}`].filter(Boolean),
+      thumbnailUrl: extractThumbnailUrl(c["3"]),
+      homepageUrl,
+    };
+  });
 }
 
 function parseCreativeDetail(raw) {
@@ -44,6 +54,7 @@ function parseCreativeDetail(raw) {
   const headlines = [];
   const descriptions = [];
   const keywords = [];
+  let homepageUrl = null;
 
   for (const v of variants) {
     // Display image variant: {"3": {"2": "<img html>"}, "5": active}
@@ -80,6 +91,25 @@ function parseCreativeDetail(raw) {
     if (v["1"]?.["1"] && typeof v["1"]["1"] === 'string' && v["1"]["1"].includes('youtube')) {
       keywords.push({ type: 'video_url', value: v["1"]["1"] });
     }
+
+    // Scan v["1"] sub-fields for destination URL (finalUrl)
+    if (!homepageUrl && v["1"] && typeof v["1"] === 'object') {
+      for (const key of Object.keys(v["1"])) {
+        const val = v["1"][key];
+        if (
+          typeof val === 'string' &&
+          val.startsWith('http') &&
+          !val.includes('googlesyndication') &&
+          !val.includes('displayads-formats.googleusercontent') &&
+          !val.includes('lh3.googleusercontent') &&
+          !val.includes('youtube.com') &&
+          !val.includes('youtu.be')
+        ) {
+          homepageUrl = val;
+          break;
+        }
+      }
+    }
   }
 
   return {
@@ -91,6 +121,7 @@ function parseCreativeDetail(raw) {
     keywords,
     images,
     previewUrls,
+    homepageUrl,
   };
 }
 
