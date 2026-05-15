@@ -24,8 +24,8 @@
       <span id="statActive" class="stat active"></span>
       <span id="statInactive" class="stat inactive"></span>
       <div class="view-controls">
-        <button id="cardViewBtn" class="active">🗂 Card</button>
-        <button id="tableViewBtn">☰ Table</button>
+        <button id="cardViewBtn">🗂 Card</button>
+        <button id="tableViewBtn" class="active">☰ Table</button>
         <button id="exportBtn">⬇ CSV</button>
       </div>
     </div>
@@ -42,11 +42,12 @@
         <thead>
           <tr>
             <th data-col="name">Dự án</th>
-            <th data-col="homepageUrl">Trang Chủ</th>
             <th data-col="startDate">Bắt đầu ↕</th>
             <th data-col="endDate">Kết thúc ↕</th>
+            <th data-col="_days">Số ngày ↕</th>
             <th>Format</th>
             <th data-col="isActive">Trạng thái ↕</th>
+            <th></th>
           </tr>
         </thead>
         <tbody id="tableBody"></tbody>

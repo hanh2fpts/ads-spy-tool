@@ -4,6 +4,14 @@ let sortCol = null;
 let sortAsc = true;
 let currentAdvertiserId = '';
 
+function calcDays(startDate, endDate) {
+  if (!startDate) return null;
+  const start = new Date(startDate);
+  const end = endDate ? new Date(endDate) : new Date();
+  const diff = Math.round((end - start) / (1000 * 60 * 60 * 24));
+  return diff >= 0 ? diff + 1 : null;
+}
+
 function esc(s) {
   return String(s ?? '')
     .replace(/&/g, '&amp;')
@@ -80,7 +88,7 @@ async function runScrape() {
     renderCards(currentCampaigns);
     renderTable(currentCampaigns);
     statsBar.classList.remove('hidden');
-    showView('card');
+    showView('table');
   } catch (_) {
     clearInterval(stepTimer);
     setError('Không thể kết nối server. Hãy đảm bảo server đang chạy.');
@@ -109,43 +117,43 @@ function renderCards(campaigns) {
           ? `<div class="card-url"><a href="${esc(c.homepageUrl)}" target="_blank" rel="noopener noreferrer">🔗 ${esc(c.homepageUrl)}</a></div>`
           : ''}
         <div class="card-meta">
-          📅 ${esc(c.startDate || '?')} → ${esc(c.endDate || 'nay')}<br/>
+          📅 ${esc(c.startDate || '?')} → ${esc(c.endDate || 'nay')}
+          ${calcDays(c.startDate, c.endDate) !== null ? `· ${calcDays(c.startDate, c.endDate)} ngày` : ''}<br/>
           📺 ${esc(c.formats.join(' · ') || '—')}
         </div>
         <span class="badge ${c.isActive ? 'active' : 'inactive'}">
           ${c.isActive ? '● Đang chạy' : '⏹ Đã tắt'}
         </span>
-        ${c.creativeId ? `<button class="card-detail-btn" data-creative="${esc(c.creativeId)}">🔍 Xem mẫu quảng cáo</button>` : ''}
+        ${c.creativeId ? `<a class="card-detail-btn" href="https://adstransparency.google.com/advertiser/${esc(currentAdvertiserId)}/creative/${esc(c.creativeId)}?region=anywhere" target="_blank" rel="noopener noreferrer">🔗 Xem quảng cáo</a>` : ''}
       </div>
     </div>
   `).join('');
 
-  cardView.querySelectorAll('.card-detail-btn').forEach(btn => {
-    btn.addEventListener('click', () => openCreativeDetail(btn.dataset.creative));
-  });
 }
 
 function renderTable(campaigns) {
   let sorted = [...campaigns];
   if (sortCol) {
     sorted.sort((a, b) => {
-      const va = a[sortCol] ?? '';
-      const vb = b[sortCol] ?? '';
+      const va = sortCol === '_days' ? (calcDays(a.startDate, a.endDate) ?? -1) : (a[sortCol] ?? '');
+      const vb = sortCol === '_days' ? (calcDays(b.startDate, b.endDate) ?? -1) : (b[sortCol] ?? '');
+      if (typeof va === 'number') return sortAsc ? va - vb : vb - va;
       return sortAsc ? String(va).localeCompare(String(vb)) : String(vb).localeCompare(String(va));
     });
   }
-  tableBody.innerHTML = sorted.map(c => `
+  tableBody.innerHTML = sorted.map(c => {
+    const days = calcDays(c.startDate, c.endDate);
+    return `
     <tr>
-      <td>${esc(c.name)}</td>
-      <td>${c.homepageUrl
-        ? `<a href="${esc(c.homepageUrl)}" target="_blank" rel="noopener noreferrer">${esc(c.homepageUrl)}</a>`
-        : '—'}</td>
+      <td class="td-name">${esc(c.name)}</td>
       <td>${esc(c.startDate || '—')}</td>
       <td>${esc(c.endDate || '—')}</td>
+      <td class="td-days">${days !== null ? days : '—'}</td>
       <td>${esc(c.formats.join(' · ') || '—')}</td>
       <td><span class="badge ${c.isActive ? 'active' : 'inactive'}">${c.isActive ? 'Đang chạy' : 'Đã tắt'}</span></td>
-    </tr>
-  `).join('');
+      <td>${c.creativeId ? `<a class="table-atc-link" href="https://adstransparency.google.com/advertiser/${esc(currentAdvertiserId)}/creative/${esc(c.creativeId)}?region=anywhere" target="_blank" rel="noopener noreferrer">🔗 Xem quảng cáo</a>` : '—'}</td>
+    </tr>`;
+  }).join('');
 }
 
 function showView(view) {

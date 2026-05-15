@@ -12,11 +12,20 @@ async function getWorker() {
   return _worker;
 }
 
-// Extract text from an image URL. Returns empty string on failure.
-async function extractText(imageUrl) {
+// Extract text from an image URL or Buffer. Returns empty string on failure.
+async function extractText(input) {
   try {
     const worker = await getWorker();
-    const { data: { text } } = await worker.recognize(imageUrl);
+    // Pre-fetch URLs as Buffer so Tesseract doesn't deal with CDN auth quirks
+    let data = input;
+    if (typeof input === 'string' && input.startsWith('http')) {
+      const res = await fetch(input, {
+        headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36' },
+      });
+      if (!res.ok) return '';
+      data = Buffer.from(await res.arrayBuffer());
+    }
+    const { data: { text } } = await worker.recognize(data);
     return text.trim();
   } catch (_) {
     return '';

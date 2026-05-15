@@ -24,6 +24,22 @@ function extractThumbnailUrl(content) {
   return html.match(/src="([^"]+)"/)?.[1] || null;
 }
 
+const GOOGLE_HOST_RE = /google|googleapis|googleusercontent|gstatic|youtube|youtu\.be|googlesyndication/i;
+
+// Try to extract the advertiser's display domain from ad creative HTML.
+// Search ad previews often embed the destination URL as an href in the rendered HTML.
+function extractDomainFromAdHtml(content) {
+  const html = content?.["3"]?.["2"] || '';
+  if (!html) return null;
+  for (const m of html.matchAll(/href="(https?:\/\/[^"]+)"/g)) {
+    try {
+      const host = new URL(m[1]).hostname;
+      if (!GOOGLE_HOST_RE.test(host)) return host;
+    } catch (_) {}
+  }
+  return null;
+}
+
 function parse(raw, enrichments = new Map()) {
   const creatives = raw?.["1"];
   if (!Array.isArray(creatives)) return [];
@@ -31,7 +47,7 @@ function parse(raw, enrichments = new Map()) {
   return creatives.map((c) => {
     const creativeId = c["2"] || null;
     const homepageUrl = (creativeId && enrichments.get(creativeId)) || null;
-    const domain = homepageUrl ? extractDomain(homepageUrl) : null;
+    const domain = homepageUrl ? extractDomain(homepageUrl) : (extractDomainFromAdHtml(c["3"]) || null);
     return {
       name: domain || c["12"] || 'Unknown',
       creativeId,

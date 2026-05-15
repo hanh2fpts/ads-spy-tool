@@ -3,6 +3,13 @@ const { chromium } = require('playwright');
 const API_URL_PATTERN = /SearchService\/SearchCreatives/;
 const TIMEOUT_MS = 30000;
 
+const PROXY_URL = process.env.https_proxy || process.env.HTTPS_PROXY ||
+                  process.env.http_proxy  || process.env.HTTP_PROXY  || null;
+const LAUNCH_OPTS = {
+  headless: true,
+  ...(PROXY_URL ? { proxy: { server: PROXY_URL } } : {}),
+};
+
 const BLOCK_TYPES = new Set(['image', 'stylesheet', 'font', 'media']);
 const BLOCK_HOSTS = /google-analytics|googletagmanager|doubleclick\.net|googlesyndication|ogads-pa\.clients6/;
 
@@ -16,7 +23,7 @@ async function blockJunk(page) {
 }
 
 async function scrape(advertiserId) {
-  const browser = await chromium.launch({ headless: true });
+  const browser = await chromium.launch(LAUNCH_OPTS);
 
   try {
     const page = await browser.newPage();
@@ -45,10 +52,28 @@ async function scrape(advertiserId) {
       dataPromise,
     ]);
 
-    return rawData;
+    const thumbnailBuffers = await fetchThumbnailBuffers(page, rawData);
+    return [rawData, thumbnailBuffers];
   } finally {
     await browser.close();
   }
+}
+
+async function fetchThumbnailBuffers(page, rawData) {
+  const urls = [...new Set(
+    (rawData?.["1"] || [])
+      .map(c => (c?.["3"]?.["3"]?.["2"] || '').match(/src="([^"]+)"/)?.[1])
+      .filter(Boolean)
+  )];
+
+  const buffers = new Map();
+  await Promise.all(urls.map(async (url) => {
+    try {
+      const res = await page.request.fetch(url, { timeout: 10000 });
+      if (res.ok()) buffers.set(url, await res.body());
+    } catch (_) {}
+  }));
+  return buffers;
 }
 
 async function scrapeCreativeDetail(advertiserId, creativeId) {
@@ -86,7 +111,7 @@ async function fetchCreativeDetailDirect(advertiserId, creativeId) {
 }
 
 async function fetchCreativeDetailWithBrowser(advertiserId, creativeId) {
-  const browser = await chromium.launch({ headless: true });
+  const browser = await chromium.launch(LAUNCH_OPTS);
 
   try {
     const page = await browser.newPage();
@@ -116,54 +141,75 @@ async function fetchCreativeDetailWithBrowser(advertiserId, creativeId) {
   }
 }
 
-// Fetches destination URLs for a list of creatives in parallel (5 at a time).
-// Returns Map<creativeId, homepageUrl|null>. Individual failures are silently null.
+// Fetches destination URLs using the browser's session cookies (bypasses Google's server-side blocking).
+// Opens one browser, loads the advertiser page to establish session, then calls GetCreativeById
+// from inside page.evaluate() — same-origin requests with real cookies succeed where Node.js fetch fails.
 async function batchFetchFinalUrls(advertiserId, rawCreatives) {
   const { parseCreativeDetail } = require('./parser');
   const results = new Map();
-  const BATCH = 5;
-  const FETCH_TIMEOUT_MS = 5000;
+  if (rawCreatives.length === 0) return results;
 
-  for (let i = 0; i < rawCreatives.length; i += BATCH) {
-    const batch = rawCreatives.slice(i, i + BATCH);
-    await Promise.all(batch.map(async (c) => {
-      const creativeId = c["2"];
-      if (!creativeId) return;
+  const browser = await chromium.launch(LAUNCH_OPTS);
+  try {
+    const page = await browser.newPage();
+    await blockJunk(page);
+
+    await page.goto(
+      `https://adstransparency.google.com/advertiser/${advertiserId}?region=anywhere`,
+      { waitUntil: 'domcontentloaded', timeout: TIMEOUT_MS }
+    );
+
+    const creativeIds = rawCreatives.map(c => c["2"]).filter(Boolean);
+    const BATCH = 8;
+
+    for (let i = 0; i < creativeIds.length; i += BATCH) {
+      const batch = creativeIds.slice(i, i + BATCH);
       try {
-        const controller = new AbortController();
-        const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
-        try {
-          const body = new URLSearchParams({
-            'f.req': JSON.stringify({ "1": advertiserId, "2": creativeId }),
-          }).toString();
-          const res = await fetch(
-            'https://adstransparency.google.com/anji/_/rpc/LookupService/GetCreativeById?authuser=',
-            {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/x-www-form-urlencoded',
-                'X-Same-Domain': '1',
-                'Origin': 'https://adstransparency.google.com',
-                'Referer': `https://adstransparency.google.com/advertiser/${advertiserId}/creative/${creativeId}?region=anywhere`,
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
-              },
-              body,
-              signal: controller.signal,
+        const batchResults = await page.evaluate(async ({ ids, advId }) => {
+          return Promise.all(ids.map(async (creativeId) => {
+            try {
+              const body = new URLSearchParams({
+                'f.req': JSON.stringify({ "1": advId, "2": creativeId }),
+              }).toString();
+              const res = await fetch('/anji/_/rpc/LookupService/GetCreativeById?authuser=', {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/x-www-form-urlencoded',
+                  'X-Same-Domain': '1',
+                },
+                body,
+              });
+              if (!res.ok) return { creativeId, data: null };
+              return { creativeId, data: await res.json() };
+            } catch (_) {
+              return { creativeId, data: null };
             }
-          );
-          if (!res.ok) { results.set(creativeId, null); return; }
-          const json = await res.json();
-          const detail = parseCreativeDetail(json);
-          results.set(creativeId, detail.homepageUrl || null);
-        } finally {
-          clearTimeout(timer);
+          }));
+        }, { ids: batch, advId: advertiserId });
+
+        for (const { creativeId, data } of batchResults) {
+          if (data) {
+            try {
+              const detail = parseCreativeDetail(data);
+              results.set(creativeId, detail.homepageUrl || null);
+            } catch (_) {
+              results.set(creativeId, null);
+            }
+          } else {
+            results.set(creativeId, null);
+          }
         }
       } catch (err) {
-        console.warn(`[batchFetchFinalUrls] Failed for ${creativeId}:`, err.message);
-        results.set(creativeId, null);
+        console.warn(`[batchFetchFinalUrls] batch ${i}: ${err.message}`);
+        for (const id of batch) results.set(id, null);
       }
-    }));
+    }
+  } catch (err) {
+    console.warn('[batchFetchFinalUrls] browser setup failed:', err.message);
+  } finally {
+    await browser.close();
   }
+
   return results;
 }
 

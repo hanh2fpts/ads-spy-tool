@@ -19,6 +19,52 @@ const ERROR_MESSAGES = {
   DEFAULT: 'Đã xảy ra lỗi, vui lòng thử lại.',
 };
 
+const OCR_SKIP = new Set(['sponsored', 'được tài trợ', 'ad', 'quảng cáo', 'advertisement']);
+
+// Extract a clean brand name from OCR text. Returns null if nothing usable.
+function extractNameFromOcrText(rawText) {
+  if (!rawText) return null;
+  const lines = rawText.split('\n').map(l => l.trim()).filter(l => l.length > 2);
+  for (const line of lines) {
+    if (line.includes('/') || line.includes('http')) continue;
+    if (/^\d+$/.test(line)) continue;
+    if (OCR_SKIP.has(line.toLowerCase())) continue;
+    // Skip domain-like strings (contain a dot followed by 2-4 letter TLD)
+    if (/\.[a-z]{2,4}(\b|$)/i.test(line)) continue;
+    // Strip leading single-char OCR artifacts (e.g. icon read as "a FXIFY" → "FXIFY")
+    const cleaned = line.replace(/^[a-z®©^•\-–]\s+/i, '').trim();
+    const alpha = cleaned.replace(/[^a-zA-ZÀ-ỹ]/g, '');
+    if (alpha.length < 3) continue;
+    return cleaned.length > 40 ? cleaned.slice(0, 40).trim() : cleaned;
+  }
+  return null;
+}
+
+// Run OCR on thumbnails to derive project names. Updates campaign.name in-place.
+// thumbnailBuffers: Map<url, Buffer> pre-fetched by the Playwright browser session.
+async function enrichNamesFromOCR(campaigns, thumbnailBuffers = new Map()) {
+  const urlToIndices = new Map();
+  campaigns.forEach((c, i) => {
+    if (!c.thumbnailUrl) return;
+    if (!urlToIndices.has(c.thumbnailUrl)) urlToIndices.set(c.thumbnailUrl, []);
+    urlToIndices.get(c.thumbnailUrl).push(i);
+  });
+
+  for (const [url, indices] of urlToIndices) {
+    try {
+      const imageData = thumbnailBuffers.has(url) ? thumbnailBuffers.get(url) : url;
+      const rawText = await extractText(imageData);
+      const name = extractNameFromOcrText(rawText);
+      if (name) {
+        for (const i of indices) campaigns[i].name = name;
+      }
+    } catch (err) {
+      console.warn(`[OCR] failed ${url.slice(0, 80)}: ${err.message}`);
+    }
+  }
+  return campaigns;
+}
+
 app.post('/api/scrape', async (req, res) => {
   const { advertiserId } = req.body;
 
@@ -32,10 +78,11 @@ app.post('/api/scrape', async (req, res) => {
   }
 
   try {
-    const raw = await scrape(advertiserId);
+    const [raw, thumbnailBuffers] = await scrape(advertiserId);
     const rawCreatives = raw?.["1"] || [];
     const enrichments = await batchFetchFinalUrls(advertiserId, rawCreatives);
     const campaigns = parse(raw, enrichments);
+    await enrichNamesFromOCR(campaigns, thumbnailBuffers);
     cache.set(advertiserId, campaigns);
     return res.json({ campaigns, fromCache: false });
   } catch (err) {
