@@ -92,13 +92,17 @@ function parseCreativeDetail(raw) {
       keywords.push({ type: 'video_url', value: v["1"]["1"] });
     }
 
-    // Scan v["1"] sub-fields for destination URL (finalUrl)
+    // Scan v["1"] sub-fields for destination URL (finalUrl).
+    // Object.keys() iterates integer-like keys ("1","2","3"...) in ascending order per ECMAScript spec,
+    // so this scan is deterministic. First non-CDN http URL wins.
     if (!homepageUrl && v["1"] && typeof v["1"] === 'object') {
       for (const key of Object.keys(v["1"])) {
         const val = v["1"][key];
         if (
           typeof val === 'string' &&
           val.startsWith('http') &&
+          val.length > 12 &&
+          val.includes('.') &&
           !val.includes('googlesyndication') &&
           !val.includes('displayads-formats.googleusercontent') &&
           !val.includes('lh3.googleusercontent') &&
