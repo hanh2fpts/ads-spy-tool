@@ -23,4 +23,9 @@ function set(advertiserId, data, cacheDir = DEFAULT_CACHE_DIR) {
   fs.writeFileSync(file, JSON.stringify({ data, cachedAt: Date.now() }));
 }
 
-module.exports = { get, set };
+function clear(advertiserId, cacheDir = DEFAULT_CACHE_DIR) {
+  const file = path.join(cacheDir, `${advertiserId}.json`);
+  if (fs.existsSync(file)) fs.unlinkSync(file);
+}
+
+module.exports = { get, set, clear };

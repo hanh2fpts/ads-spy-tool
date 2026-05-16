@@ -32,6 +32,7 @@ const tableBody = document.getElementById('tableBody');
 const cardViewBtn = document.getElementById('cardViewBtn');
 const tableViewBtn = document.getElementById('tableViewBtn');
 const exportBtn = document.getElementById('exportBtn');
+const clearCacheBtn = document.getElementById('clearCacheBtn');
 const creativeModal = document.getElementById('creativeModal');
 const modalBody = document.getElementById('modalBody');
 document.getElementById('modalCloseBtn').addEventListener('click', closeModal);
@@ -43,6 +44,7 @@ input.addEventListener('keydown', e => { if (e.key === 'Enter') runScrape(); });
 cardViewBtn.addEventListener('click', () => showView('card'));
 tableViewBtn.addEventListener('click', () => showView('table'));
 exportBtn.addEventListener('click', doExport);
+clearCacheBtn.addEventListener('click', doClearCache);
 
 document.querySelectorAll('th[data-col]').forEach(th => {
   th.addEventListener('click', () => {
@@ -170,6 +172,17 @@ function showView(view) {
 function doExport() {
   if (!currentAdvertiserId) return;
   window.location.href = `/api/export?advertiserId=${encodeURIComponent(currentAdvertiserId)}`;
+}
+
+async function doClearCache() {
+  if (!currentAdvertiserId) return;
+  await fetch('/api/clear-cache', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ advertiserId: currentAdvertiserId }),
+  });
+  clearCacheBtn.textContent = '✓ Đã xóa';
+  setTimeout(() => { clearCacheBtn.textContent = '🗑 Clear Cache'; }, 2000);
 }
 
 function setError(msg) {

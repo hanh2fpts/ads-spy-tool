@@ -156,6 +156,15 @@ app.get('/api/creative-detail', async (req, res) => {
   }
 });
 
+app.post('/api/clear-cache', (req, res) => {
+  const { advertiserId } = req.body;
+  if (!advertiserId || !ID_REGEX.test(advertiserId)) {
+    return res.status(400).json({ error: 'Advertiser ID không hợp lệ.' });
+  }
+  cache.clear(advertiserId);
+  return res.json({ ok: true });
+});
+
 app.get('/api/export', (req, res) => {
   const { advertiserId } = req.query;
   if (!advertiserId || !ID_REGEX.test(advertiserId)) {
