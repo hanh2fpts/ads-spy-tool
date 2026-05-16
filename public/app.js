@@ -181,8 +181,7 @@ async function doClearCache() {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ advertiserId: currentAdvertiserId }),
   });
-  clearCacheBtn.textContent = '✓ Đã xóa';
-  setTimeout(() => { clearCacheBtn.textContent = '🗑 Clear Cache'; }, 2000);
+  runScrape();
 }
 
 function setError(msg) {

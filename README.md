@@ -91,7 +91,7 @@ Sau bước này, **mỗi lần bật máy server sẽ tự chạy ngầm** — 
 | **Scrape** | Lấy dữ liệu quảng cáo |
 | **Card / Table** | Chuyển đổi kiểu hiển thị |
 | **CSV** | Tải về file Excel |
-| **Clear Cache** | Xóa cache của nhà quảng cáo **đang xem**, sau đó nhấn Scrape lại để lấy dữ liệu mới nhất từ Google |
+| **Clear Cache** | Xóa cache của nhà quảng cáo **đang xem** và tự động scrape lại dữ liệu mới nhất từ Google |
 
 ---
 
@@ -122,5 +122,5 @@ pm2 start ads-spy-tool      # bật lại server
 ## Lưu ý
 
 - Tool chỉ xem được quảng cáo **đã được Google công khai** tại Ads Transparency Center
-- Kết quả scrape được lưu cache 1 giờ. Nếu muốn lấy dữ liệu mới trước khi hết 1 giờ: nhấn **Clear Cache** (xóa cache của nhà quảng cáo đang xem) → nhấn **Scrape** lại
+- Kết quả scrape được lưu cache 1 giờ. Nếu muốn lấy dữ liệu mới trước khi hết 1 giờ: nhấn **Clear Cache** — tool sẽ tự động scrape lại ngay
 - Nếu scrape thất bại, thử lại sau vài phút (Google đôi khi giới hạn request)
