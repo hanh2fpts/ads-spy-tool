@@ -143,9 +143,13 @@ function renderTable(campaigns) {
   }
   tableBody.innerHTML = sorted.map(c => {
     const days = calcDays(c.startDate, c.endDate);
+    const urlCell = c.homepageUrl
+      ? `<a class="table-atc-link" href="${esc(c.homepageUrl)}" target="_blank" rel="noopener noreferrer">${esc(new URL(c.homepageUrl).hostname)}</a>`
+      : '—';
     return `
     <tr>
       <td class="td-name">${esc(c.name)}</td>
+      <td class="td-url">${urlCell}</td>
       <td>${esc(c.startDate || '—')}</td>
       <td>${esc(c.endDate || '—')}</td>
       <td class="td-days">${days !== null ? days : '—'}</td>

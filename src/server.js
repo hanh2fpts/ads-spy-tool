@@ -21,6 +21,25 @@ const ERROR_MESSAGES = {
 
 const OCR_SKIP = new Set(['sponsored', 'được tài trợ', 'ad', 'quảng cáo', 'advertisement']);
 
+// Extract display URL from OCR text (e.g. "www.fxify.com/" baked into ad preview images).
+function extractUrlFromOcrText(rawText) {
+  if (!rawText) return null;
+  for (let line of rawText.split('\n').map(l => l.trim())) {
+    // Strip leading non-URL chars: icons, ®, ^, letters followed by space (e.g. "® ", "a ", "^ ")
+    line = line.replace(/^[^a-z0-9]+/i, '').trim();
+    // Normalize OCR artifact "www. domain.com" → "www.domain.com"
+    line = line.replace(/^(www)\.\s+/i, 'www.');
+    if (!line || line.includes(' ') || line.includes('@')) continue;
+    // Match: one or more subdomain parts + TLD, optional path (e.g. app.tradesyncer.com, www.fxify.com/)
+    if (!/^([a-z0-9][a-z0-9-]*\.)+[a-z]{2,6}(\/\S*)?$/i.test(line)) continue;
+    try {
+      const href = `https://${line.replace(/\/$/, '')}`;
+      return new URL(href).href;
+    } catch (_) {}
+  }
+  return null;
+}
+
 // Extract a clean brand name from OCR text. Returns null if nothing usable.
 function extractNameFromOcrText(rawText) {
   if (!rawText) return null;
@@ -54,9 +73,17 @@ async function enrichNamesFromOCR(campaigns, thumbnailBuffers = new Map()) {
     try {
       const imageData = thumbnailBuffers.has(url) ? thumbnailBuffers.get(url) : url;
       const rawText = await extractText(imageData);
+      console.log(`[OCR] raw text: ${JSON.stringify(rawText?.slice(0, 200))}`);
       const name = extractNameFromOcrText(rawText);
+      const ocrUrl = extractUrlFromOcrText(rawText);
+      console.log(`[OCR] → name="${name}" url="${ocrUrl}"`);
       if (name) {
         for (const i of indices) campaigns[i].name = name;
+      }
+      if (ocrUrl) {
+        for (const i of indices) {
+          if (!campaigns[i].homepageUrl) campaigns[i].homepageUrl = ocrUrl;
+        }
       }
     } catch (err) {
       console.warn(`[OCR] failed ${url.slice(0, 80)}: ${err.message}`);
@@ -140,16 +167,29 @@ app.get('/api/export', (req, res) => {
     return res.status(404).json({ error: 'Không có dữ liệu. Hãy scrape trước.' });
   }
 
-  const header = 'Name,Homepage URL,Start Date,End Date,Is Active,Formats\n';
+  function calcDays(startDate, endDate) {
+    if (!startDate) return '';
+    const start = new Date(startDate);
+    const end = endDate ? new Date(endDate) : new Date();
+    const diff = Math.round((end - start) / (1000 * 60 * 60 * 24));
+    return diff >= 0 ? diff + 1 : '';
+  }
+
+  const header = 'Name,Homepage URL,Start Date,End Date,Days,Is Active,Formats,Ad Link\n';
   const rows = campaigns.map(c => {
     const safeName = c.name.replace(/"/g, '""');
     const safeUrl = (c.homepageUrl || '').replace(/"/g, '""');
-    return `"${safeName}","${safeUrl}",${c.startDate || ''},${c.endDate || ''},${c.isActive},${c.formats.join('|')}`;
+    const days = calcDays(c.startDate, c.endDate);
+    const adLink = c.creativeId
+      ? `https://adstransparency.google.com/advertiser/${advertiserId}/creative/${c.creativeId}?region=anywhere`
+      : '';
+    return `"${safeName}","${safeUrl}",${c.startDate || ''},${c.endDate || ''},${days},${c.isActive},${c.formats.join('|')},"${adLink}"`;
   }).join('\n');
 
-  res.setHeader('Content-Type', 'text/csv');
+  const BOM = '﻿';
+  res.setHeader('Content-Type', 'text/csv; charset=utf-8');
   res.setHeader('Content-Disposition', `attachment; filename="${advertiserId}.csv"`);
-  return res.send(header + rows);
+  return res.send(BOM + header + rows);
 });
 
 module.exports = app;

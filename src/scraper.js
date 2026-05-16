@@ -191,11 +191,13 @@ async function batchFetchFinalUrls(advertiserId, rawCreatives) {
           if (data) {
             try {
               const detail = parseCreativeDetail(data);
+              console.log(`[batch] ${creativeId} → homepageUrl="${detail.homepageUrl}"`);
               results.set(creativeId, detail.homepageUrl || null);
             } catch (_) {
               results.set(creativeId, null);
             }
           } else {
+            console.log(`[batch] ${creativeId} → no data`);
             results.set(creativeId, null);
           }
         }
