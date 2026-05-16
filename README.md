@@ -113,9 +113,36 @@ pm2 restart ads-spy-tool
 pm2 status                  # xem server đang chạy không
 pm2 logs ads-spy-tool       # xem log lỗi
 pm2 restart ads-spy-tool    # khởi động lại server
-pm2 stop ads-spy-tool       # tắt server
+pm2 stop ads-spy-tool       # tắt server tạm thời (bật máy lại vẫn tự chạy)
 pm2 start ads-spy-tool      # bật lại server
 ```
+
+---
+
+## Tắt hẳn, không cho chạy cùng Windows
+
+Chạy 3 lệnh sau trong Command Prompt:
+
+```
+pm2 stop ads-spy-tool
+pm2 delete ads-spy-tool
+pm2 save
+```
+
+Sau đó khởi động lại máy, tool sẽ không tự chạy nữa.
+
+---
+
+## Bật lại để chạy cùng Windows
+
+Vào thư mục project trong Command Prompt, chạy:
+
+```
+pm2 start src/start.js --name "ads-spy-tool"
+pm2 save
+```
+
+Từ lần bật máy tiếp theo, tool sẽ tự chạy ngầm trở lại.
 
 ---
 
