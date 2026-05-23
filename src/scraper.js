@@ -2,11 +2,18 @@ const { chromium } = require('playwright');
 
 const API_URL_PATTERN = /SearchService\/SearchCreatives/;
 const TIMEOUT_MS = 30000;
+const MAX_PAGES = 200; // safety cap: 200 pages × ~40 ads = 8000 ads max
 
 const PROXY_URL = process.env.https_proxy || process.env.HTTPS_PROXY ||
                   process.env.http_proxy  || process.env.HTTP_PROXY  || null;
 const LAUNCH_OPTS = {
   headless: true,
+  args: [
+    '--no-sandbox',
+    '--disable-setuid-sandbox',
+    '--disable-blink-features=AutomationControlled',
+    '--disable-infobars',
+  ],
   ...(PROXY_URL ? { proxy: { server: PROXY_URL } } : {}),
 };
 
@@ -27,11 +34,118 @@ async function scrape(advertiserId) {
 
   try {
     const page = await browser.newPage();
+    // Hide webdriver flag that Google uses to detect headless browsers
+    await page.addInitScript(() => {
+      Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
+    });
+    await page.setExtraHTTPHeaders({ 'Accept-Language': 'en-US,en;q=0.9' });
     await blockJunk(page);
 
-    const dataPromise = new Promise((resolve, reject) => {
+    // Run goto and response-listener concurrently (same as original pattern).
+    // This is critical: the SearchCreatives response can arrive before domcontentloaded,
+    // so the listener must be active during navigation, not after.
+    let endpointPath = null;
+    const firstPagePromise = new Promise((resolve, reject) => {
       const timer = setTimeout(() => reject(new Error('NO_DATA')), TIMEOUT_MS);
+      page.on('response', async (response) => {
+        const url = response.url();
+        // Log every RPC call to spot the real endpoint
+        if (url.includes('anji/_/rpc') || url.includes('SearchCreatives')) {
+          const ct = response.headers()['content-type'] || '';
+          console.log(`[scraper] rpc response: ${url.split('?')[0].split('/').slice(-2).join('/')} ct=${ct}`);
+        }
+        if (!API_URL_PATTERN.test(url)) return;
+        const contentType = response.headers()['content-type'] || '';
+        if (!contentType.includes('json')) {
+          console.log(`[scraper] SearchCreatives matched but wrong content-type: ${contentType}`);
+          return;
+        }
+        try {
+          const json = JSON.parse(await response.text());
+          if (Array.isArray(json?.["1"])) {
+            clearTimeout(timer);
+            const u = new URL(url);
+            endpointPath = u.pathname + u.search;
+            resolve(json);
+          } else {
+            console.log(`[scraper] SearchCreatives json but no "1" array, keys: ${Object.keys(json).join(',')}`);
+          }
+        } catch (e) {
+          console.log(`[scraper] SearchCreatives parse error: ${e.message}`);
+        }
+      });
+    });
 
+    const pageUrl = `https://adstransparency.google.com/advertiser/${advertiserId}?region=anywhere`;
+    console.log(`[scraper] navigating to ${pageUrl}`);
+    // Navigate first so we can detect Google's sorry/block page immediately.
+    // firstPagePromise timer already started above, so no time is lost.
+    await page.goto(pageUrl, { waitUntil: 'domcontentloaded', timeout: TIMEOUT_MS });
+
+    const finalUrl = page.url();
+    console.log(`[scraper] landed on: ${finalUrl.slice(0, 100)}`);
+    if (finalUrl.includes('google.com/sorry') || finalUrl.includes('recaptcha.google')) {
+      throw new Error('BLOCKED');
+    }
+
+    const firstPage = await firstPagePromise;
+    console.log(`[scraper] navigation complete, endpoint: ${endpointPath}`);
+
+    const allCreatives = [];
+    const seenIds = new Set();
+    const addBatch = (batch) => {
+      let added = 0;
+      for (const c of (batch || [])) {
+        const id = c["2"];
+        if (!id || seenIds.has(id)) continue;
+        seenIds.add(id);
+        allCreatives.push(c);
+        added++;
+      }
+      return added;
+    };
+
+    addBatch(firstPage["1"]);
+    const extraKeys = Object.keys(firstPage).filter(k => k !== "1");
+    console.log(`[scraper] page 1: ${firstPage["1"].length} creatives — extra fields: [${extraKeys.join(', ')}]`);
+
+    // Google protobuf-style pagination: next-page token is in field "2".
+    // Call via page.evaluate() so browser session cookies are reused (bypasses auth).
+    let pageToken = firstPage["2"] || null;
+    let pageNum = 1;
+
+    while (pageToken && pageNum < MAX_PAGES) {
+      const nextPage = await page.evaluate(async ({ path, advId, token }) => {
+        try {
+          const body = new URLSearchParams({
+            'f.req': JSON.stringify({ "1": advId, "2": token }),
+          }).toString();
+          const res = await fetch(path, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Same-Domain': '1' },
+            body,
+          });
+          if (!res.ok) return null;
+          return res.json();
+        } catch (_) { return null; }
+      }, { path: endpointPath, advId: advertiserId, token: pageToken });
+
+      if (!nextPage || !Array.isArray(nextPage["1"]) || nextPage["1"].length === 0) break;
+
+      const added = addBatch(nextPage["1"]);
+      pageNum++;
+      console.log(`[scraper] page ${pageNum}: +${added} new (total: ${allCreatives.length})`);
+      pageToken = nextPage["2"] || null;
+    }
+
+    // Fallback: if direct pagination didn't find a token (field "2" absent or wrong),
+    // scroll the DOM to trigger the page's own pagination logic and intercept responses.
+    if (pageNum === 1) {
+      console.log(`[scraper] no page token found in field "2" — falling back to scroll pagination`);
+      let lastCount = allCreatives.length;
+      let idleRounds = 0;
+
+      // Re-attach listener to collect scroll-triggered responses
       page.on('response', async (response) => {
         if (!API_URL_PATTERN.test(response.url())) return;
         const contentType = response.headers()['content-type'] || '';
@@ -39,19 +153,26 @@ async function scrape(advertiserId) {
         try {
           const json = JSON.parse(await response.text());
           if (Array.isArray(json?.["1"])) {
-            clearTimeout(timer);
-            resolve(json);
+            const added = addBatch(json["1"]);
+            if (added > 0) console.log(`[scraper] scroll: +${added} new (total: ${allCreatives.length})`);
           }
         } catch (_) {}
       });
-    });
 
-    const url = `https://adstransparency.google.com/advertiser/${advertiserId}?region=anywhere`;
-    const [, rawData] = await Promise.all([
-      page.goto(url, { waitUntil: 'domcontentloaded', timeout: TIMEOUT_MS }),
-      dataPromise,
-    ]);
+      for (let i = 0; i < MAX_PAGES && idleRounds < 3; i++) {
+        await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
+        await page.waitForTimeout(2000);
+        if (allCreatives.length === lastCount) {
+          idleRounds++;
+        } else {
+          idleRounds = 0;
+          lastCount = allCreatives.length;
+        }
+      }
+    }
 
+    console.log(`[scraper] done: ${allCreatives.length} total creatives across ${pageNum} pages`);
+    const rawData = { "1": allCreatives };
     const thumbnailBuffers = await fetchThumbnailBuffers(page, rawData);
     return [rawData, thumbnailBuffers];
   } finally {
