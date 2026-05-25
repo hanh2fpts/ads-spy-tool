@@ -32,9 +32,9 @@ const ADVERTISER_ID = process.argv[2] || 'AR12345678';
 
     try {
       const text = await response.text();
-      if (text.length < 50) return;
 
       if (url.includes('SearchCreatives')) {
+        if (text.length < 5) return;
         const pageIndex = searchCreativesResponses.length;
         searchCreativesResponses.push(text);
         console.log(`\n[SearchCreatives page ${pageIndex + 1} — ${text.length} bytes]`);
@@ -49,7 +49,7 @@ const ADVERTISER_ID = process.argv[2] || 'AR12345678';
             if (k !== "1") console.log(`  Field "${k}":`, JSON.stringify(v).slice(0, 300));
           });
         } catch (_) {}
-      } else if (!url.includes('DunsMapping') && !url.includes('GetAsyncData')) {
+      } else if (text.length >= 50 && !url.includes('DunsMapping') && !url.includes('GetAsyncData')) {
         console.log('\n=== OTHER ENDPOINT ===', url);
         console.log('Preview:', text.slice(0, 500));
       }

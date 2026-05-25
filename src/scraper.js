@@ -49,30 +49,22 @@ async function scrape(advertiserId) {
       const timer = setTimeout(() => reject(new Error('NO_DATA')), TIMEOUT_MS);
       page.on('response', async (response) => {
         const url = response.url();
-        // Log every RPC call to spot the real endpoint
-        if (url.includes('anji/_/rpc') || url.includes('SearchCreatives')) {
-          const ct = response.headers()['content-type'] || '';
-          console.log(`[scraper] rpc response: ${url.split('?')[0].split('/').slice(-2).join('/')} ct=${ct}`);
-        }
         if (!API_URL_PATTERN.test(url)) return;
         const contentType = response.headers()['content-type'] || '';
-        if (!contentType.includes('json')) {
-          console.log(`[scraper] SearchCreatives matched but wrong content-type: ${contentType}`);
-          return;
-        }
+        if (!contentType.includes('json')) return;
         try {
           const json = JSON.parse(await response.text());
+          const u = new URL(url);
           if (Array.isArray(json?.["1"])) {
             clearTimeout(timer);
-            const u = new URL(url);
             endpointPath = u.pathname + u.search;
             resolve(json);
-          } else {
-            console.log(`[scraper] SearchCreatives json but no "1" array, keys: ${Object.keys(json).join(',')}`);
+          } else if (Object.keys(json).length === 0) {
+            clearTimeout(timer);
+            endpointPath = u.pathname + u.search;
+            resolve({ "1": [] });
           }
-        } catch (e) {
-          console.log(`[scraper] SearchCreatives parse error: ${e.message}`);
-        }
+        } catch (_) {}
       });
     });
 
@@ -109,16 +101,26 @@ async function scrape(advertiserId) {
     const extraKeys = Object.keys(firstPage).filter(k => k !== "1");
     console.log(`[scraper] page 1: ${firstPage["1"].length} creatives — extra fields: [${extraKeys.join(', ')}]`);
 
-    // Google protobuf-style pagination: next-page token is in field "2".
-    // Call via page.evaluate() so browser session cookies are reused (bypasses auth).
-    let pageToken = firstPage["2"] || null;
+    // Google updated their API format (2025-05+): token-based pagination.
+    // Advertiser ID goes in "3"."13"."1" (array). Next-page token from response field "2"
+    // is passed back in request field "4". Field "7" stays constant.
+    const PAGE_SIZE = 40;
     let pageNum = 1;
+    let pageToken = firstPage["2"] || null;
 
     while (pageToken && pageNum < MAX_PAGES) {
-      const nextPage = await page.evaluate(async ({ path, advId, token }) => {
+      const nextPage = await page.evaluate(async ({ path, advId, token, pageSize }) => {
         try {
           const body = new URLSearchParams({
-            'f.req': JSON.stringify({ "1": advId, "2": token }),
+            'f.req': JSON.stringify({
+              "2": pageSize,
+              "3": {
+                "12": { "1": "", "2": true },
+                "13": { "1": [advId] },
+              },
+              "4": token,
+              "7": { "1": 1, "2": 0, "3": 2704 },
+            }),
           }).toString();
           const res = await fetch(path, {
             method: 'POST',
@@ -128,14 +130,14 @@ async function scrape(advertiserId) {
           if (!res.ok) return null;
           return res.json();
         } catch (_) { return null; }
-      }, { path: endpointPath, advId: advertiserId, token: pageToken });
+      }, { path: endpointPath, advId: advertiserId, token: pageToken, pageSize: PAGE_SIZE });
 
       if (!nextPage || !Array.isArray(nextPage["1"]) || nextPage["1"].length === 0) break;
 
       const added = addBatch(nextPage["1"]);
       pageNum++;
-      console.log(`[scraper] page ${pageNum}: +${added} new (total: ${allCreatives.length})`);
       pageToken = nextPage["2"] || null;
+      console.log(`[scraper] page ${pageNum}: +${added} new (total: ${allCreatives.length})`);
     }
 
     // Fallback: if direct pagination didn't find a token (field "2" absent or wrong),
