@@ -3,6 +3,7 @@ let currentCampaigns = [];
 let sortCol = null;
 let sortAsc = true;
 let currentAdvertiserId = '';
+let activeStream = null; // current EventSource
 
 function calcDays(startDate, endDate) {
   if (!startDate) return null;
@@ -55,12 +56,16 @@ document.querySelectorAll('th[data-col]').forEach(th => {
   });
 });
 
-async function runScrape() {
+function runScrape() {
   const advertiserId = input.value.trim();
   setError('');
   if (!advertiserId) { setError('Vui lòng nhập Advertiser ID.'); return; }
 
+  // Cancel any in-progress stream
+  if (activeStream) { activeStream.close(); activeStream = null; }
+
   currentAdvertiserId = advertiserId;
+  currentCampaigns = [];
   setLoading(true, 'Đang mở trình duyệt...');
   scrapeBtn.disabled = true;
   statsBar.classList.add('hidden');
@@ -74,37 +79,138 @@ async function runScrape() {
     loadingStep.textContent = steps[stepIdx];
   }, 4000);
 
-  try {
-    const res = await fetch('/api/scrape', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ advertiserId }),
-    });
-    const data = await res.json();
-    clearInterval(stepTimer);
+  let firstPage = true;
 
-    if (!res.ok) { setError(data.error || 'Lỗi không xác định từ server.'); return; }
+  const es = new EventSource(`/api/scrape-stream?advertiserId=${encodeURIComponent(advertiserId)}`);
+  activeStream = es;
 
-    currentCampaigns = data.campaigns;
-    renderStats(currentCampaigns);
-    renderCards(currentCampaigns);
-    renderTable(currentCampaigns);
-    statsBar.classList.remove('hidden');
-    showView('table');
-  } catch (_) {
+  es.addEventListener('page', (e) => {
+    const data = JSON.parse(e.data);
+    currentCampaigns.push(...data.campaigns);
+
+    const stillLoading = !data.done;
+    if (firstPage) {
+      clearInterval(stepTimer);
+      firstPage = false;
+      renderStats(currentCampaigns, stillLoading);
+      renderCards(currentCampaigns);
+      renderTable(currentCampaigns);
+      statsBar.classList.remove('hidden');
+      showView('table');
+      setLoading(false);
+    } else {
+      renderStats(currentCampaigns, stillLoading);
+      if (sortCol) {
+        renderTable(currentCampaigns);
+      } else {
+        appendTableRows(data.campaigns);
+      }
+      appendCards(data.campaigns);
+    }
+
+    if (data.done) {
+      es.close();
+      activeStream = null;
+      scrapeBtn.disabled = false;
+      setLoadingMore(false);
+    } else {
+      setLoadingMore(true, data.total || currentCampaigns.length);
+    }
+  });
+
+  es.addEventListener('error', (e) => {
     clearInterval(stepTimer);
-    setError('Không thể kết nối server. Hãy đảm bảo server đang chạy.');
-  } finally {
-    setLoading(false);
+    es.close();
+    activeStream = null;
     scrapeBtn.disabled = false;
-  }
+    setLoading(false);
+    setLoadingMore(false);
+    if (e.data) {
+      try {
+        const d = JSON.parse(e.data);
+        setError(d.error || 'Lỗi không xác định từ server.');
+      } catch (_) {}
+    }
+  });
+
+  es.onerror = () => {
+    if (es.readyState === EventSource.CLOSED) return;
+    clearInterval(stepTimer);
+    es.close();
+    activeStream = null;
+    scrapeBtn.disabled = false;
+    setLoading(false);
+    setLoadingMore(false);
+    if (!currentCampaigns.length) {
+      setError('Không thể kết nối server. Hãy đảm bảo server đang chạy.');
+    }
+  };
 }
 
-function renderStats(campaigns) {
+function setLoadingMore(show, total = 0) {
+  let el = document.getElementById('loadingMoreBar');
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'loadingMoreBar';
+    el.style.cssText = 'text-align:center;padding:8px;font-size:13px;color:#64748b';
+    tableView.appendChild(el);
+  }
+  el.style.display = show ? '' : 'none';
+  if (show) el.textContent = `Đang tải thêm... (${total} quảng cáo)`;
+}
+
+function appendTableRows(campaigns) {
+  const rows = campaigns.map(c => {
+    const days = calcDays(c.startDate, c.endDate);
+    const urlCell = c.homepageUrl
+      ? `<a class="table-atc-link" href="${esc(c.homepageUrl)}" target="_blank" rel="noopener noreferrer">${esc(new URL(c.homepageUrl).hostname)}</a>`
+      : '—';
+    return `<tr>
+      <td class="td-name">${esc(c.name)}</td>
+      <td class="td-url">${urlCell}</td>
+      <td>${esc(c.startDate || '—')}</td>
+      <td>${esc(c.endDate || '—')}</td>
+      <td class="td-days">${days !== null ? days : '—'}</td>
+      <td>${esc(c.formats.join(' · ') || '—')}</td>
+      <td><span class="badge ${c.isActive ? 'active' : 'inactive'}">${c.isActive ? 'Đang chạy' : 'Đã tắt'}</span></td>
+      <td>${c.creativeId ? `<a class="table-atc-link" href="https://adstransparency.google.com/advertiser/${esc(currentAdvertiserId)}/creative/${esc(c.creativeId)}?region=anywhere" target="_blank" rel="noopener noreferrer">🔗 Xem quảng cáo</a>` : '—'}</td>
+    </tr>`;
+  }).join('');
+  tableBody.insertAdjacentHTML('beforeend', rows);
+}
+
+function appendCards(campaigns) {
+  const html = campaigns.map(c => `
+    <div class="card">
+      ${c.thumbnailUrl
+        ? `<img class="card-thumb" src="${esc(c.thumbnailUrl)}" alt="${esc(c.name)}" loading="lazy" />`
+        : `<div class="card-thumb-placeholder">Không có ảnh</div>`}
+      <div class="card-body">
+        <div class="card-name">${esc(c.name)}</div>
+        ${c.homepageUrl
+          ? `<div class="card-url"><a href="${esc(c.homepageUrl)}" target="_blank" rel="noopener noreferrer">🔗 ${esc(c.homepageUrl)}</a></div>`
+          : ''}
+        <div class="card-meta">
+          📅 ${esc(c.startDate || '?')} → ${esc(c.endDate || 'nay')}
+          ${calcDays(c.startDate, c.endDate) !== null ? `· ${calcDays(c.startDate, c.endDate)} ngày` : ''}<br/>
+          📺 ${esc(c.formats.join(' · ') || '—')}
+        </div>
+        <span class="badge ${c.isActive ? 'active' : 'inactive'}">
+          ${c.isActive ? '● Đang chạy' : '⏹ Đã tắt'}
+        </span>
+        ${c.creativeId ? `<a class="card-detail-btn" href="https://adstransparency.google.com/advertiser/${esc(currentAdvertiserId)}/creative/${esc(c.creativeId)}?region=anywhere" target="_blank" rel="noopener noreferrer">🔗 Xem quảng cáo</a>` : ''}
+      </div>
+    </div>
+  `).join('');
+  cardView.insertAdjacentHTML('beforeend', html);
+}
+
+function renderStats(campaigns, loading = false) {
+  const prefix = loading ? '~' : '';
   const active = campaigns.filter(c => c.isActive).length;
-  document.getElementById('statTotal').textContent = `📦 ${campaigns.length} dự án`;
-  document.getElementById('statActive').textContent = `✅ ${active} đang chạy`;
-  document.getElementById('statInactive').textContent = `⏹ ${campaigns.length - active} đã tắt`;
+  document.getElementById('statTotal').textContent = `📦 ${prefix}${campaigns.length} dự án`;
+  document.getElementById('statActive').textContent = `✅ ${prefix}${active} đang chạy`;
+  document.getElementById('statInactive').textContent = `⏹ ${prefix}${campaigns.length - active} đã tắt`;
 }
 
 function renderCards(campaigns) {
@@ -176,6 +282,7 @@ function doExport() {
 
 async function doClearCache() {
   if (!currentAdvertiserId) return;
+  if (activeStream) { activeStream.close(); activeStream = null; }
   await fetch('/api/clear-cache', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },

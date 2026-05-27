@@ -338,4 +338,110 @@ async function batchFetchFinalUrls(advertiserId, rawCreatives) {
   return results;
 }
 
-module.exports = { scrape, scrapeCreativeDetail, batchFetchFinalUrls };
+// Like scrape() but calls onPage({ creatives, pageNum, done }) after each Google page.
+// Skips thumbnail pre-fetch and enrichment — caller gets raw creatives immediately.
+async function scrapeStream(advertiserId, onPage) {
+  const browser = await chromium.launch(LAUNCH_OPTS);
+  const allCreatives = [];
+  const seenIds = new Set();
+
+  const addBatch = (batch) => {
+    const newOnes = [];
+    for (const c of (batch || [])) {
+      const id = c["2"];
+      if (!id || seenIds.has(id)) continue;
+      seenIds.add(id);
+      allCreatives.push(c);
+      newOnes.push(c);
+    }
+    return newOnes;
+  };
+
+  try {
+    const page = await browser.newPage();
+    await page.addInitScript(() => {
+      Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
+    });
+    await page.setExtraHTTPHeaders({ 'Accept-Language': 'en-US,en;q=0.9' });
+    await blockJunk(page);
+
+    let endpointPath = null;
+    const firstPagePromise = new Promise((resolve, reject) => {
+      const timer = setTimeout(() => reject(new Error('NO_DATA')), TIMEOUT_MS);
+      page.on('response', async (response) => {
+        const url = response.url();
+        if (!API_URL_PATTERN.test(url)) return;
+        const contentType = response.headers()['content-type'] || '';
+        if (!contentType.includes('json')) return;
+        try {
+          const json = JSON.parse(await response.text());
+          const u = new URL(url);
+          if (Array.isArray(json?.["1"])) {
+            clearTimeout(timer);
+            endpointPath = u.pathname + u.search;
+            resolve(json);
+          } else if (Object.keys(json).length === 0) {
+            clearTimeout(timer);
+            endpointPath = u.pathname + u.search;
+            resolve({ "1": [] });
+          }
+        } catch (_) {}
+      });
+    });
+
+    const pageUrl = `https://adstransparency.google.com/advertiser/${advertiserId}?region=anywhere`;
+    console.log(`[scraper/stream] navigating to ${pageUrl}`);
+    await page.goto(pageUrl, { waitUntil: 'domcontentloaded', timeout: TIMEOUT_MS });
+
+    const finalUrl = page.url();
+    if (finalUrl.includes('google.com/sorry') || finalUrl.includes('recaptcha.google')) {
+      throw new Error('BLOCKED');
+    }
+
+    const firstPage = await firstPagePromise;
+    console.log(`[scraper/stream] page 1: ${firstPage["1"].length} creatives, endpoint: ${endpointPath}`);
+
+    const batch1 = addBatch(firstPage["1"]);
+    let pageToken = firstPage["2"] || null;
+    await onPage({ creatives: batch1, pageNum: 1, done: !pageToken });
+
+    let pageNum = 1;
+    while (pageToken && pageNum < MAX_PAGES) {
+      const nextPage = await page.evaluate(async ({ path, advId, token, pageSize }) => {
+        try {
+          const body = new URLSearchParams({
+            'f.req': JSON.stringify({
+              "2": pageSize,
+              "3": { "12": { "1": "", "2": true }, "13": { "1": [advId] } },
+              "4": token,
+              "7": { "1": 1, "2": 0, "3": 2704 },
+            }),
+          }).toString();
+          const res = await fetch(path, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Same-Domain': '1' },
+            body,
+          });
+          if (!res.ok) return null;
+          return res.json();
+        } catch (_) { return null; }
+      }, { path: endpointPath, advId: advertiserId, token: pageToken, pageSize: PAGE_SIZE });
+
+      if (!nextPage || !Array.isArray(nextPage["1"]) || nextPage["1"].length === 0) break;
+
+      const batch = addBatch(nextPage["1"]);
+      pageNum++;
+      pageToken = nextPage["2"] || null;
+      console.log(`[scraper/stream] page ${pageNum}: +${batch.length} new (total: ${allCreatives.length})`);
+      await onPage({ creatives: batch, pageNum, done: !pageToken });
+    }
+
+    console.log(`[scraper/stream] done: ${allCreatives.length} total across ${pageNum} pages`);
+  } finally {
+    await browser.close();
+  }
+
+  return allCreatives;
+}
+
+module.exports = { scrape, scrapeStream, scrapeCreativeDetail, batchFetchFinalUrls };

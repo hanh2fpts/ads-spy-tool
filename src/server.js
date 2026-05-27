@@ -1,7 +1,7 @@
 // src/server.js
 const express = require('express');
 const path = require('path');
-const { scrape, scrapeCreativeDetail, batchFetchFinalUrls } = require('./scraper');
+const { scrape, scrapeStream, scrapeCreativeDetail, batchFetchFinalUrls } = require('./scraper');
 const { parse, parseCreativeDetail } = require('./parser');
 const { extractText, parseAdText } = require('./ocr');
 const cache = require('./cache');
@@ -91,6 +91,49 @@ async function enrichNamesFromOCR(campaigns, thumbnailBuffers = new Map()) {
   }
   return campaigns;
 }
+
+app.get('/api/scrape-stream', async (req, res) => {
+  const { advertiserId } = req.query;
+
+  if (!advertiserId || !ID_REGEX.test(advertiserId)) {
+    return res.status(400).json({ error: 'Advertiser ID không hợp lệ.' });
+  }
+
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+  res.flushHeaders();
+
+  const send = (event, data) => res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
+
+  const cached = cache.get(advertiserId);
+  if (cached) {
+    send('page', { campaigns: cached, pageNum: 1, done: true, fromCache: true });
+    res.end();
+    return;
+  }
+
+  let aborted = false;
+  req.on('close', () => { aborted = true; });
+
+  const allCampaigns = [];
+  try {
+    await scrapeStream(advertiserId, async ({ creatives, pageNum, done }) => {
+      if (aborted) throw new Error('CLIENT_DISCONNECTED');
+      const campaigns = parse({ "1": creatives });
+      allCampaigns.push(...campaigns);
+      send('page', { campaigns, pageNum, done, total: allCampaigns.length });
+    });
+    cache.set(advertiserId, allCampaigns);
+  } catch (err) {
+    if (!aborted) {
+      const msg = ERROR_MESSAGES[err.message] || ERROR_MESSAGES.DEFAULT;
+      send('error', { error: msg });
+    }
+  } finally {
+    res.end();
+  }
+});
 
 app.post('/api/scrape', async (req, res) => {
   const { advertiserId } = req.body;
